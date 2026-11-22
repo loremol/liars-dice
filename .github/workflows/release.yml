@@ -1,0 +1,73 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: bash
+jobs:
+  package:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            platform: linux-x86_64
+          - os: windows-2025
+            platform: windows-x86_64
+          - os: macos-15
+            platform: macos-universal
+            osx_architectures: arm64;x86_64
+    runs-on: ${{ matrix.os }}
+    env:
+      OSX_ARCHITECTURES: ${{ matrix.osx_architectures }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Install GLFW build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwayland-dev libxkbcommon-dev wayland-protocols libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libgl-dev pkg-config
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DLIARS_DICE_PACKAGE_VERSION="$GITHUB_REF_NAME" -DLIARS_DICE_PACKAGE_PLATFORM=${{ matrix.platform }} ${OSX_ARCHITECTURES:+"-DCMAKE_OSX_ARCHITECTURES=$OSX_ARCHITECTURES"}
+      - name: Build
+        run: cmake --build build --config Release --parallel
+      - name: Test
+        run: ctest --test-dir build --build-config Release --output-on-failure
+      - name: Check the macOS binary is universal
+        if: runner.os == 'macOS'
+        run: test "$(lipo -archs build/ui/liars_dice | tr ' ' '\n' | sort | xargs)" = "arm64 x86_64"
+      - name: Check the Windows binary does not import the MSVC runtime DLLs
+        if: runner.os == 'Windows'
+        run: |
+          test -f build/ui/Release/liars_dice.exe
+          ! grep -aiqE 'vcruntime140|msvcp140' build/ui/Release/liars_dice.exe
+      - name: Package
+        run: cpack --config build/CPackConfig.cmake -C Release -B build/package
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: package-${{ matrix.platform }}
+          path: build/package/liars_dice-*
+          if-no-files-found: error
+  publish:
+    needs: package
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          pattern: package-*
+          merge-multiple: true
+          path: dist
+      - name: Create the GitHub Release
+        run: |
+          flags=()
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then
+            flags+=(--prerelease)
+          fi
+          gh release create "$GITHUB_REF_NAME" dist/* --title "Liar's Dice $GITHUB_REF_NAME" --notes-file .github/release-notes.md "${flags[@]}"

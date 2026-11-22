@@ -1,0 +1,31 @@
+build/
+
+# CMake
+/CMakeCache.txt
+/CMakeFiles/
+/cmake_install.cmake
+/CTestTestfile.cmake
+/DartConfiguration.tcl
+/Makefile
+/Testing/
+/_deps/
+/compile_commands.json
+/CPackConfig.cmake
+/CPackSourceConfig.cmake
+/bin/
+**/CMakeFiles/
+**/cmake_install.cmake
+**/CTestTestfile.cmake
+**/Makefile
+**/*_include.cmake
+**/cmake_test_discovery_*.json
+**/*_tests.cmake
+
+# Build output
+*.a
+*.o
+*.so
+*.dylib
+
+# clangd index cache
+.cache/
